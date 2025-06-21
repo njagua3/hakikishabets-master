@@ -467,3 +467,140 @@ MultiBet is the whole receipt.
 MultiBetSelection is each item on the receipt.
 
 
+🔐 Authentication Flow (JWT-based)
+This application uses JWT (JSON Web Tokens) for stateless authentication and authorization. Here's a full breakdown of how it works:
+
+🧩 1. User Model Changes
+The User entity was updated to support authentication:
+
+✅ Removed username and email
+
+✅ Added:
+
+phoneNumber (used as unique identifier)
+
+password (stored as a hashed value using BCrypt)
+
+java
+Copy
+Edit
+@Column(unique = true)
+private String phoneNumber;
+
+private String password;
+🛠️ 2. Password Hashing
+During registration, the user’s password is hashed using BCrypt before saving.
+
+During login, we compare the raw input password with the hashed DB password using BCryptPasswordEncoder.matches().
+
+🪪 3. JWT Utility Class
+The JwtUtil class handles:
+
+Method	Purpose
+generateToken()	Creates a JWT token using the phone number as subject
+extractPhoneNumber()	Extracts the phone number from the token
+validateToken()	Verifies token integrity and expiration
+
+The secret key is Base64-encoded and signing is done with HS256 algorithm.
+
+🚪 4. Login Endpoint (/api/auth/login)
+Controller: AuthController
+
+Endpoint: POST /api/auth/login
+
+Input:
+
+json
+Copy
+Edit
+{
+"phoneNumber": "0707016042",
+"password": "test123"
+}
+Process:
+
+Fetch user by phone number.
+
+Check password using BCrypt.
+
+If valid, generate a JWT token.
+
+Response:
+
+json
+Copy
+Edit
+{
+"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6...",
+"message": "Login successful"
+}
+🛡️ 5. JwtFilter (Request Interceptor)
+This filter is triggered before every secured HTTP request:
+
+Checks Authorization header for a Bearer token.
+
+Extracts the phone number from the token.
+
+Loads the user and sets the authenticated context if token is valid.
+
+http
+Copy
+Edit
+Authorization: Bearer <token_here>
+🔐 6. Security Configuration (SecurityConfig)
+Disables session state (stateless API).
+
+Allows public access to:
+
+/api/auth/**
+
+/api/users/register
+
+All other endpoints require valid JWT.
+
+java
+Copy
+Edit
+http
+.csrf().disable()
+.authorizeHttpRequests(auth -> auth
+.requestMatchers("/api/auth/**", "/api/users/register").permitAll()
+.anyRequest().authenticated()
+)
+.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+🧪 7. How to Test (Postman / Frontend)
+✅ Step 1: Login
+POST /api/auth/login
+
+Headers: Content-Type: application/json
+
+Body:
+
+json
+Copy
+Edit
+{
+"phoneNumber": "0707016042",
+"password": "test123"
+}
+Get the token from the response.
+
+✅ Step 2: Use Token
+Add header to any protected route:
+
+makefile
+Copy
+Edit
+Authorization: Bearer <token>
+✅ Step 3: Try an Authorized Endpoint
+Example: GET /api/users
+Will only work with a valid token.
+
+🧹 Notes
+Passwords are stored using BCrypt – never in plain text.
+
+Token expiration is set to 10 hours.
+
+Tokens are not stored server-side, so logout is client-controlled.
+
+To invalidate tokens before expiry, implement a token blacklist (optional).

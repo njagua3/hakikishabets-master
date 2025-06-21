@@ -4,6 +4,7 @@ import com.hakikishabets.bets.model.User;
 import com.hakikishabets.bets.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -13,16 +14,21 @@ import java.util.Optional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final BCryptPasswordEncoder passwordEncoder;
 
     @Autowired
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public User createUser(User user) {
         if (userRepository.existsByPhoneNumber(user.getPhoneNumber())) {
-            throw new RuntimeException("Phone number already registered");
+            throw new RuntimeException("Phone number already exists");
         }
+
+        // ✅ Use injected encoder
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         return userRepository.save(user);
     }
 
@@ -35,22 +41,18 @@ public class UserService {
     }
 
     public User updateUserBalance(Long userId, BigDecimal amount) {
-        Optional<User> optionalUser = userRepository.findById(userId);
-        if (optionalUser.isPresent()) {
-            User user = optionalUser.get();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-            BigDecimal currentBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
-            BigDecimal newBalance = currentBalance.add(amount);
+        BigDecimal currentBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+        BigDecimal newBalance = currentBalance.add(amount);
 
-            if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
-                throw new RuntimeException("Insufficient balance");
-            }
-
-            user.setBalance(newBalance);
-            return userRepository.save(user);
-        } else {
-            throw new RuntimeException("User not found");
+        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new RuntimeException("Insufficient balance");
         }
+
+        user.setBalance(newBalance);
+        return userRepository.save(user);
     }
 
     public List<User> getAllUsers() {
@@ -64,5 +66,9 @@ public class UserService {
             return true;
         }
         return false;
+    }
+
+    public boolean checkPassword(String rawPassword, String encodedPassword) {
+        return passwordEncoder.matches(rawPassword, encodedPassword);
     }
 }
